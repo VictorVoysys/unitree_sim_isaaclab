@@ -311,12 +311,15 @@ class DDSRLActionProvider(ActionProvider):
             return torch.tensor(ort_outs[0], device=self.env.device)
         return run_inference
     def compute_current_observations(self):
-        command = [0,0,0,0.8]  
+        command = [0,0,0,0.8]
         run_command = self.run_command_dds.get_run_command()
         if run_command and 'run_command' in run_command:
             run_command_data = run_command['run_command']
-            
-            if isinstance(run_command_data, str):
+
+            # Check for DAMP/STOP — don't overwrite, let get_action() handle it
+            if isinstance(run_command_data, str) and run_command_data.strip() in ("DAMP", "STOP", "PASSIVE", "ZERO_TORQUE"):
+                pass  # Leave command in shared memory for get_action()
+            elif isinstance(run_command_data, str):
                 try:
                     run_command_list = ast.literal_eval(run_command_data)
                     if isinstance(run_command_list, list) and len(run_command_list) >= 4:
@@ -326,6 +329,7 @@ class DDSRLActionProvider(ActionProvider):
                         command[3] = float(run_command_list[3])
                 except (ValueError, SyntaxError) as e:
                     print(f"[WARNING] cannot parse run_command string: {run_command_data}, error: {e}")
+                self.run_command_dds.write_run_command([0.0,0,0,0.8])
             else:
                 try:
                     command[0] = float(run_command_data[0])
@@ -334,8 +338,7 @@ class DDSRLActionProvider(ActionProvider):
                     command[3] = float(run_command_data[3])
                 except (IndexError, TypeError) as e:
                     print(f"[WARNING] cannot parse run_command data: {run_command_data}, error: {e}")
-            
-            self.run_command_dds.write_run_command([0.0,0,0,0.8])
+                self.run_command_dds.write_run_command([0.0,0,0,0.8])
       
         # command = [0.5,0.0,0.7,0.8]
         command = torch.tensor(command, device=self.env.device, dtype=torch.float32)
@@ -375,6 +378,41 @@ class DDSRLActionProvider(ActionProvider):
     def get_action(self, env) -> Optional[torch.Tensor]:
         """Get action from DDS"""
         try:
+            # Check for DAMP/STOP command — equivalent to real robot's Damp() (FSM ID 1)
+            # Zeros stiffness and sets low damping so the robot goes passive.
+            run_cmd = self.run_command_dds.get_run_command() if self.run_command_dds else None
+            if run_cmd and 'run_command' in run_cmd:
+                cmd_str = str(run_cmd['run_command']).strip()
+                if cmd_str in ("DAMP", "STOP", "PASSIVE", "ZERO_TORQUE"):
+                    robot = self.env.scene["robot"]
+                    num_joints = robot.num_joints
+                    zero = torch.zeros(1, num_joints, device=self.env.device, dtype=torch.float32)
+                    low_damping = torch.full((1, num_joints), 5.0, device=self.env.device, dtype=torch.float32)
+                    # Save original stiffness/damping for restoration
+                    if not hasattr(self, '_saved_stiffness'):
+                        self._saved_stiffness = robot.data.joint_stiffness.clone()
+                        self._saved_damping = robot.data.joint_damping.clone()
+                    self._is_damped = True
+                    robot.write_joint_stiffness_to_sim(zero)
+                    robot.write_joint_damping_to_sim(low_damping)
+                    robot.set_joint_position_target(robot.data.joint_pos)
+                    robot.set_joint_effort_target(zero)
+                    for _ in range(4):
+                        self.env.scene.write_data_to_sim()
+                        self.env.sim.step(render=False)
+                        self.env.scene.update(dt=self.env.physics_dt)
+                    self.env.sim.render()
+                    self.env.observation_manager.compute()
+                    return None
+
+            # Restore stiffness/damping if recovering from DAMP
+            if getattr(self, '_is_damped', False):
+                robot = self.env.scene["robot"]
+                robot.write_joint_stiffness_to_sim(self._saved_stiffness)
+                robot.write_joint_damping_to_sim(self._saved_damping)
+                self._is_damped = False
+                print("[ActionProvider] Restored stiffness/damping from DAMP mode")
+
             full_action = self._full_action_buf
             full_action.zero_()
             action_data = self.run_policy()

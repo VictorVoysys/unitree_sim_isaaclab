@@ -41,16 +41,43 @@ class RunCommandDDS(DDSObject):
         pass
     
     def setup_subscriber(self) -> bool:
-        """Setup the run command subscriber"""
+        """Setup the run command subscriber.
+
+        Tries DDS first; falls back to polling /tmp/g1_run_command.txt if
+        CycloneDDS is broken (PRECONDITION_NOT_MET on Ubuntu 24.04/kernel 6.17).
+        """
         try:
             self.subscriber = ChannelSubscriber("rt/run_command/cmd", String_)
             self.subscriber.Init(lambda msg: self.dds_subscriber(msg, ""), 1)
-            
-            print(f"[{self.node_name}] Run command subscriber initialized")
+            print(f"[{self.node_name}] Run command subscriber initialized (DDS)")
             return True
         except Exception as e:
-            print(f"run_command_dds [{self.node_name}] Failed to initialize the run command subscriber: {e}")
-            return False
+            print(f"[{self.node_name}] DDS subscriber failed ({e}), using file fallback")
+            import threading
+            self._file_poll_thread = threading.Thread(
+                target=self._poll_command_file, daemon=True)
+            self._file_poll_thread.start()
+            return True
+
+    def _poll_command_file(self):
+        """Poll /tmp/g1_run_command.txt for velocity commands (fallback when DDS is broken)."""
+        import os, time
+        path = "/tmp/g1_run_command.txt"
+        last_mtime = 0
+        while True:
+            try:
+                if os.path.exists(path):
+                    mtime = os.path.getmtime(path)
+                    if mtime != last_mtime:
+                        last_mtime = mtime
+                        with open(path, 'r') as f:
+                            data = f.read().strip()
+                        if data:
+                            cmd_data = {"run_command": data}
+                            self.output_shm.write_data(cmd_data)
+            except Exception:
+                pass
+            time.sleep(0.02)  # 50Hz poll
     
     
     def dds_publisher(self) -> Any:

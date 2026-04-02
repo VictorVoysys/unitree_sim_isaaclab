@@ -119,6 +119,11 @@ temp/
 data.*
 data/
 
+# ================================
+# Dependencies (cloned by install.sh)
+# ================================
+deps/
+
 assets/
 assets.*
 assets

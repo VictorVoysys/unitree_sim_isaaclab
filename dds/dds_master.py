@@ -40,8 +40,9 @@ class DDSManager:
         self._default_pub_interval: float = 0.01  # 100Hz default
 
         self.dds_initialized = False
-        self._init_dds()
-        print("[DDSManager] DDSManager initialized")
+        # DDS init deferred — must happen AFTER Isaac Sim's AppLauncher
+        # finishes, otherwise the DomainParticipant gets invalidated.
+        print("[DDSManager] DDSManager initialized (DDS init deferred)")
     
     def _parse_object_name(self, name: str) -> tuple[str, str]:
         """Parse object name"""
@@ -177,10 +178,14 @@ class DDSManager:
     
     def start_publishing(self,enable_publish_names:List[str]=None):
         """Start publishing"""
+        if not self.dds_initialized:
+            self._init_dds()
         self._pub_list.clear()
         for name, obj in self.objects.items():
             if enable_publish_names is None or name in enable_publish_names:
-                obj.setup_publisher()
+                if obj.setup_publisher() is False:
+                    print(f"[DDSManager] WARNING: setup_publisher failed for '{name}', skipping")
+                    continue
                 obj.publishing = True
                 self._pub_list.append(name)
         self.publishing_running = True
@@ -201,9 +206,13 @@ class DDSManager:
         self.subscribing_running = False
     def start_subscribing(self,enable_subscribe_names:List[str]=None):
         """Start subscribing"""
-        for name, obj in self.objects.items():  
+        if not self.dds_initialized:
+            self._init_dds()
+        for name, obj in self.objects.items():
             if enable_subscribe_names is None or name in enable_subscribe_names:
-                obj.setup_subscriber()
+                if obj.setup_subscriber() is False:
+                    print(f"[DDSManager] WARNING: setup_subscriber failed for '{name}', skipping")
+                    continue
                 obj.subscribing = True
 
 

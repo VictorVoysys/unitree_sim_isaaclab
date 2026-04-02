@@ -57,17 +57,65 @@ class G1RobotDDS(DDSObject):
             return False
     
     def setup_subscriber(self) -> bool:
-        """Setup the subscriber of the G1 robot"""
+        """Setup the subscriber of the G1 robot.
+
+        Tries DDS first; falls back to polling /tmp/g1_arm_targets.txt for
+        arm joint commands when Python CycloneDDS is broken.
+        """
         try:
             print(f"[{self.node_name}] Create ChannelSubscriber...")
             self.subscriber = ChannelSubscriber("rt/lowcmd", LowCmd_)
             self.subscriber.Init(lambda msg: self.dds_subscriber(msg, ""), 32)
             return True
         except Exception as e:
-            print(f"g1_robot_dds [{self.node_name}] Command subscriber initialization failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
+            print(f"[{self.node_name}] DDS subscriber failed ({e}), using file fallback for arm control")
+            import threading
+            self._arm_file_thread = threading.Thread(
+                target=self._poll_arm_file, daemon=True)
+            self._arm_file_thread.start()
+            return True
+
+    def _poll_arm_file(self):
+        """Poll /tmp/g1_arm_targets.txt for arm joint targets (fallback)."""
+        import os, time, json
+        path = "/tmp/g1_arm_targets.txt"
+        last_mtime = 0
+        while True:
+            try:
+                if os.path.exists(path):
+                    mtime = os.path.getmtime(path)
+                    if mtime != last_mtime:
+                        last_mtime = mtime
+                        with open(path, 'r') as f:
+                            data = json.loads(f.read().strip())
+                        if 'joints' in data:
+                            # Build a motor_cmd-like structure for the output shared memory
+                            positions = [0.0] * 35
+                            kps = [0.0] * 35
+                            kds = [0.0] * 35
+                            torques = [0.0] * 35
+                            for jt in data['joints']:
+                                idx = jt['i']
+                                positions[idx] = jt['q']
+                                kps[idx] = jt['kp']
+                                kds[idx] = jt['kd']
+                                torques[idx] = jt.get('tau', 0.0)
+                            cmd_data = {
+                                "mode_pr": 0,
+                                "mode_machine": 0,
+                                "motor_cmd": {
+                                    "positions": positions,
+                                    "velocities": [0.0] * 35,
+                                    "torques": torques,
+                                    "kp": kps,
+                                    "kd": kds,
+                                },
+                                "arm_weight": data.get('weight', 0.0),
+                            }
+                            self.output_shm.write_data(cmd_data)
+            except Exception:
+                pass
+            time.sleep(0.004)  # 250Hz poll
     
     def dds_publisher(self) -> Any:
         """Convert Isaac Lab state to DDS message and publish."""
