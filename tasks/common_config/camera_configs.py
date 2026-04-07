@@ -23,9 +23,9 @@ class CameraBaseCfg:
         cls,
         prim_path: str = "/World/envs/env_.*/Robot/d435_link/front_cam",
         update_period: float = 0.02,
-        height: int = 480,
-        width: int =  640,
-        focal_length: float = 7.6,
+        height: int = 1080,
+        width: int =  1920,
+        focal_length: float = 14.44,   # matches Intel D435 RGB (69.4° HFOV)
         focus_distance: float = 400.0,
         horizontal_aperture: float = 20.0,
         clipping_range: tuple = (0.1, 1.0e5),

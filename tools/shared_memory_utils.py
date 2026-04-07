@@ -21,7 +21,7 @@ def get_shm_name(image_name: str) -> str:
     """Get shared memory name for a specific image"""
     return f"isaac_{image_name}_image_shm"
 
-SHM_SIZE_PER_IMAGE = 640 * 480 * 3 + 128  # ~1MB per image + header + buffer
+SHM_SIZE_PER_IMAGE = 1920 * 1080 * 3 + 128  # ~6MB per image + header (supports up to 1080p)
 
 # Backward compatibility
 SHM_NAME = "isaac_multi_image_shm"  # Kept for backward compatibility
