@@ -375,6 +375,23 @@ class DDSRLActionProvider(ActionProvider):
         current_actor_obs = self.compute_observations()
         action = self.policy(current_actor_obs)
         return action
+    def restore_from_damp(self):
+        """Restore stiffness/damping after DAMP, called during sim reset.
+
+        When DAMP is sent before reset, the 'DAMP' string persists in DDS
+        shared memory and gets re-read every frame, keeping the robot limp.
+        This method restores PD control and clears the DAMP state.
+        """
+        if getattr(self, '_is_damped', False):
+            robot = self.env.scene["robot"]
+            robot.write_joint_stiffness_to_sim(self._saved_stiffness)
+            robot.write_joint_damping_to_sim(self._saved_damping)
+            self._is_damped = False
+            print("[ActionProvider] Restored stiffness/damping during reset")
+        # Clear DAMP from DDS shared memory so it doesn't re-trigger
+        if self.run_command_dds:
+            self.run_command_dds.write_run_command([0.0, 0.0, 0.0, 0.8])
+
     def get_action(self, env) -> Optional[torch.Tensor]:
         """Get action from DDS"""
         try:

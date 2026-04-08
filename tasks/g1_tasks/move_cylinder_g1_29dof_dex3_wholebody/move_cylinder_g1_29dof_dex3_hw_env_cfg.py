@@ -174,5 +174,6 @@ class MoveCylinderG129Dex3WholebodyEnvCfg(ManagerBasedRLEnvCfg):
         self.event_manager.register("reset_all_self", SimpleEvent(
             func=lambda env: base_mdp.reset_scene_to_default(
                 env,
-                torch.arange(env.num_envs, device=env.device))
+                torch.arange(env.num_envs, device=env.device),
+                reset_joint_targets=True)
         ))

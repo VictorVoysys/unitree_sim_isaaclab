@@ -494,6 +494,9 @@ def main():
                             reset_category = reset_pose_cmd.get("reset_category")
                             if reset_category == '2':
                                 print("reset all (robot + objects)")
+                                # Restore stiffness first (DAMP may have zeroed it)
+                                if hasattr(action_provider, 'restore_from_damp'):
+                                    action_provider.restore_from_damp()
                                 env_cfg.event_manager.trigger("reset_all_self", env)
                                 reset_pose_dds.write_reset_pose_command(-1)
                             elif reset_category == '1':

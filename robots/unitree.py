@@ -724,9 +724,17 @@ G129_CFG_WITH_DEX3_WHOLEBODY = ArticulationCfg(
             ".*_elbow_joint": 0.87,
             "left_shoulder_roll_joint": 0.18,
             "left_shoulder_pitch_joint": 0.35,
+            "left_shoulder_yaw_joint": 0.0,
+            "left_wrist_roll_joint": 0.0,
+            "left_wrist_pitch_joint": 0.0,
+            "left_wrist_yaw_joint": 0.0,
             "right_shoulder_roll_joint": -0.18,
             "right_shoulder_pitch_joint": 0.35,
-       
+            "right_shoulder_yaw_joint": 0.0,
+            "right_wrist_roll_joint": 0.0,
+            "right_wrist_pitch_joint": 0.0,
+            "right_wrist_yaw_joint": 0.0,
+
             # fingers joints
             "left_hand_index_0_joint": 0.0,
             "left_hand_middle_0_joint": 0.0,
