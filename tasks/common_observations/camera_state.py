@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 import torch
+import numpy as np
 import sys
 import os
 import threading
@@ -117,6 +118,28 @@ def get_camera_image(
             images["head"] = head_image.numpy()
         else:
             images["head"] = head_image.cpu().numpy()
+
+        # Depth, if the camera was configured with data_types containing
+        # "depth" (alias for distance_to_image_plane). Output is float32
+        # metric distance per pixel, with NaN/inf where the ray missed
+        # everything within the clipping range. We pack it as uint16
+        # millimetres so the SHM payload is half the size of float32
+        # and the consumer can scale by 1e-3 to recover metres.
+        depth_out = env.scene["front_camera"].data.output.get("depth")
+        if depth_out is not None:
+            head_depth = depth_out[0]  # [H, W, 1] float32
+            if head_depth.device.type == 'cpu':
+                head_depth_np = head_depth.numpy()
+            else:
+                head_depth_np = head_depth.cpu().numpy()
+            # Squeeze trailing channel dim, replace non-finite with 0
+            # (treated as "no data" by the consumer), clip to 65 m and
+            # quantise to mm.
+            if head_depth_np.ndim == 3 and head_depth_np.shape[-1] == 1:
+                head_depth_np = head_depth_np[..., 0]
+            head_depth_np = np.where(np.isfinite(head_depth_np), head_depth_np, 0.0)
+            np.clip(head_depth_np, 0.0, 65.535, out=head_depth_np)
+            images["head_depth"] = (head_depth_np * 1000.0).astype(np.uint16)
     
     # Left camera (left wrist camera)
     if "left_wrist_camera" in camera_keys:
