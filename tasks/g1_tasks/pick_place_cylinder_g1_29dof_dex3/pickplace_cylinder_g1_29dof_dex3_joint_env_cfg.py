@@ -21,7 +21,7 @@ from isaaclab.utils import configclass
 from . import mdp
 # use Isaac Lab native event system
 
-from tasks.common_config import  G1RobotPresets, CameraPresets  # isort: skip
+from tasks.common_config import  G1RobotPresets, CameraPresets, LidarPresets  # isort: skip
 from tasks.common_event.event_manager import SimpleEvent, SimpleEventManager
 
 # import public scene configuration
@@ -31,21 +31,36 @@ from tasks.common_scene.base_scene_pickplace_cylindercfg import TableCylinderSce
 # Scene definition
 ##
 
+# Override the head camera to also publish metric depth alongside RGB.
+# The "depth" data type aliases distance_to_image_plane in Isaac Lab and
+# returns float32 metres per pixel; camera_state.py downcasts it to
+# uint16 mm before pushing to shared memory. Wrist cams stay RGB-only —
+# saving depth on each adds GPU cost we don't need for VR teleop.
+def _g1_front_camera_with_depth():
+    cam = CameraPresets.g1_front_camera()
+    cam.data_types = ["rgb", "depth"]
+    return cam
+
+
 @configclass
 class ObjectTableSceneCfg(TableCylinderSceneCfg):
     """object table scene configuration class
-    
+
     inherits from G1SingleObjectSceneCfg, gets the complete G1 robot scene configuration
     can add task-specific scene elements or override default configurations here
     """
-    
+
     # Humanoid robot w/ arms higher
-    # 5. humanoid robot configuration 
+    # 5. humanoid robot configuration
     robot: ArticulationCfg = G1RobotPresets.g1_29dof_dex3_base_fix()
-    # 6. add camera configuration 
-    front_camera = CameraPresets.g1_front_camera()
+    # 6. add camera configuration (head cam carries RGB + depth)
+    front_camera = _g1_front_camera_with_depth()
     left_wrist_camera = CameraPresets.left_dex3_wrist_camera()
     right_wrist_camera = CameraPresets.right_dex3_wrist_camera()
+    # 7. MID-360 lidar attached to torso_link, dome-down (180° roll
+    # baked into the offset). See tasks/common_config/lidar_configs.py
+    # for the rationale on the orientation.
+    mid360_lidar = LidarPresets.g1_mid360()
 
 ##
 # MDP settings
@@ -76,6 +91,8 @@ class ObservationsCfg:
 
         # 3. camera image observation
         camera_image = ObsTerm(func=mdp.get_camera_image)
+        # 4. lidar point-cloud observation (writes to SHM as side effect)
+        lidar_cloud = ObsTerm(func=mdp.get_lidar_cloud)
 
         def __post_init__(self):
             """post initialization function

@@ -5,12 +5,14 @@
 
 from .robot_configs import RobotBaseCfg, H12RobotPresets, RobotJointTemplates,G1RobotPresets
 from .camera_configs import CameraBaseCfg, CameraPresets
+from .lidar_configs import LidarPresets
 
 __all__ = [
     "RobotBaseCfg",
     "G1RobotPresets",
     "H12RobotPresets",
-    "RobotJointTemplates", 
+    "RobotJointTemplates",
     "CameraBaseCfg",
-    "CameraPresets"
-] 
+    "CameraPresets",
+    "LidarPresets",
+]

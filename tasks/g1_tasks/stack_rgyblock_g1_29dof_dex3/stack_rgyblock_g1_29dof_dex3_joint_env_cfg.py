@@ -19,7 +19,7 @@ from isaaclab.assets import ArticulationCfg
 from . import mdp
 # use Isaac Lab native event system
 
-from tasks.common_config import  G1RobotPresets, CameraPresets  # isort: skip
+from tasks.common_config import  G1RobotPresets, CameraPresets, LidarPresets  # isort: skip
 from tasks.common_event.event_manager import SimpleEvent, SimpleEventManager, BatchObjectEvent, MultiObjectEvent
 
 # import public scene configuration
@@ -29,24 +29,37 @@ from tasks.common_scene.base_scene_stack_rgyblock import TableRedGreenYellowBloc
 # Scene definition
 ##
 
+# Override the head camera to also publish metric depth alongside RGB.
+# camera_state.py downcasts the float32 depth to uint16 mm before
+# pushing it to shared memory. Wrist cams stay RGB-only.
+def _g1_front_camera_with_depth():
+    cam = CameraPresets.g1_front_camera()
+    cam.data_types = ["rgb", "depth"]
+    return cam
+
+
 @configclass
 class ObjectTableSceneCfg(TableRedGreenYellowBlockSceneCfg):
     """object table scene configuration class
-    
+
     inherits from G1SingleObjectSceneCfg, gets the complete G1 robot scene configuration
     can add task-specific scene elements or override default configurations here
     """
-    
+
     # Humanoid robot w/ arms higher
-    # 5. humanoid robot configuration 
+    # 5. humanoid robot configuration
     robot: ArticulationCfg = G1RobotPresets.g1_29dof_dex3_base_fix(init_pos=(-4.2, -3.7, 0.76),
         init_rot=(0.7071, 0, 0, -0.7071))
 
 
-    # 6. add camera configuration 
-    front_camera = CameraPresets.g1_front_camera()
+    # 6. add camera configuration (head cam carries RGB + depth)
+    front_camera = _g1_front_camera_with_depth()
     left_wrist_camera = CameraPresets.left_dex3_wrist_camera()
     right_wrist_camera = CameraPresets.right_dex3_wrist_camera()
+    # 7. MID-360 lidar attached to torso_link, dome-down (180° roll
+    # baked into the offset). See tasks/common_config/lidar_configs.py
+    # for the rationale on the orientation.
+    mid360_lidar = LidarPresets.g1_mid360()
 
 ##
 # MDP settings
@@ -77,6 +90,8 @@ class ObservationsCfg:
 
         # 3. camera image observation
         camera_image = ObsTerm(func=mdp.get_camera_image)
+        # 4. lidar point-cloud observation (writes to SHM as side effect)
+        lidar_cloud = ObsTerm(func=mdp.get_lidar_cloud)
 
         def __post_init__(self):
             """post initialization function
