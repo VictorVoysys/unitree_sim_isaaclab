@@ -82,12 +82,14 @@ _ROBOT_MESHES_EXCLUDING_LIDAR = MultiMeshRayCasterCfg.RaycastTargetCfg(
 )
 
 
-# Quaternion (w, x, y, z) for R = Rx(π) · Ry(0.04014). See module
-# docstring for why; computed by hand and re-verified by:
-#   plugins/unitree_g1/visualize_lidar_fov.py with --no-roll-fix off.
-# The 180° roll about X dominates; the small Y pitch is the URDF's
-# mid360_joint forward tilt.
-_LIDAR_OFFSET_ROT_WXYZ = (0.0, 0.99979, 0.0, 0.02007)
+# Quaternion (w, x, y, z) for R = Ry(0.04014) · Rx(π), the URDF
+# convention (Rz·Ry·Rx with rpy = (π, 0.04014, 0)). The 180° roll
+# about X dominates and is what the module docstring's "dome-down"
+# discussion is about; the small Y pitch is the URDF's mid360_joint
+# forward tilt. Bridge and visualize_lidar_fov.py in the plugin repo
+# both use this same convention — see sim_lidar_bridge_tcp.py
+# (LIDAR_RPY_TORSO = (π, 0.04014, 0), _rot_xyz = Rz·Ry·Rx).
+_LIDAR_OFFSET_ROT_WXYZ = (0.0, 0.99979, 0.0, -0.02007)
 _LIDAR_OFFSET_POS = (0.0002835, 0.00003, 0.41618)
 
 
