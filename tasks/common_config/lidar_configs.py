@@ -28,6 +28,8 @@ frame, the cone covers ~+7° above robot horizon to ~-52° below — the
 range that matters for chest/table/face teleop work.
 """
 
+import math
+
 from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg
 from isaaclab.sensors.ray_caster.patterns import LidarPatternCfg
 from isaaclab.utils import configclass
@@ -93,6 +95,26 @@ _LIDAR_OFFSET_ROT_WXYZ = (0.0, 0.99979, 0.0, -0.02007)
 _LIDAR_OFFSET_POS = (0.0002835, 0.00003, 0.41618)
 
 
+# Lidar ROI presets in sensor-local frame (after the dome-down offset
+# rotation). Each entry is ((vertical_fov_min, vertical_fov_max),
+# (horizontal_fov_min, horizontal_fov_max)) in degrees.
+#
+#   "camera": cropped to the D435 head-camera frustum. HFOV 69.4°
+#     → azimuth ±34.7°. VFOV 42.5° centred at camera pitch 47.6°
+#     → elevation [26.35°, 68.85°], clipped to [26.35°, 52°] by the
+#     MID-360's hardware vertical FOV (the bottom ~17° of camera
+#     vertical extent is outside the lidar cone — nothing to simulate
+#     there).
+#   "full": the entire MID-360 hardware FOV (-7° to +52° elevation,
+#     360° azimuth). Use for downstream consumers that need wide
+#     coverage (SLAM, navigation); pay for it with a higher
+#     points_per_scan than the cropped default.
+_ROI_FOV_DEG = {
+    "camera": ((26.35, 52.0), (-34.7, 34.7)),
+    "full":   ((-7.0, 52.0), (-180.0, 180.0)),
+}
+
+
 @configclass
 class LidarPresets:
     """Lidar preset configurations for Unitree humanoid heads."""
@@ -101,26 +123,64 @@ class LidarPresets:
     def g1_mid360(
         cls,
         prim_path: str = "/World/envs/env_.*/Robot/torso_link",
-        # MVP density: light enough to not steal more than ~1 fps from
-        # the 15 fps sim baseline. 16 channels × 1° azimuth × 10 Hz
-        # = 5760 rays/scan × 10 = 57.6 kray/s. Bumped back up later if
-        # we need finer detail; for verifying the geometry is right
-        # the current setting is more than enough.
         update_period: float = 0.10,
         max_distance: float = 30.0,
-        channels: int = 16,
-        horizontal_res: float = 1.0,
+        roi: str = "camera",
+        points_per_scan: int = 1680,
         mesh_prim_paths: list = None,
     ) -> MultiMeshRayCasterCfg:
         """Approximate a MID-360 attached to the G1 torso, dome-down.
 
-        Uses MultiMeshRayCaster so we can hit dynamic meshes (the robot's
-        own arms, the manipulated object) in addition to the static
-        scene. The pattern is repetitive (Velodyne-style channels +
-        azimuth grid) which is a simplification of the real
-        non-repetitive rosette — point density per scan is in the same
-        ballpark for VR-teleop visualisation.
+        Uses MultiMeshRayCaster so we can hit dynamic meshes (the
+        robot's own arms, the manipulated object) in addition to the
+        static scene. Pattern is repetitive (Velodyne-style channels +
+        azimuth grid) — a simplification of the real non-repetitive
+        rosette — but per-frame point density is tuned to match the
+        real MID-360 within the chosen ROI.
+
+        Args:
+            roi: Region of the lidar dome to simulate. ``"camera"``
+                (default) crops to the D435 head-camera frustum
+                (~7% of the dome) so we don't waste rays on directions
+                the operator's depth panel can't see. ``"full"``
+                simulates the entire MID-360 FOV; use for downstream
+                consumers that need wide coverage (SLAM, navigation).
+                See ``_ROI_FOV_DEG`` for the exact ranges.
+            points_per_scan: Target number of rays per scan. The
+                default ``1680`` is real-MID-360-in-frustum throughput
+                at the ``"camera"`` ROI (manufacturer spec: 200 kpts/s
+                × ~7.3 % solid-angle ratio × 100 ms ≈ 1.46 k, with a
+                small bump for typical rosette hotspots). For
+                ``"full"`` ROI, ``20000`` matches real-hardware
+                full-dome rate; bump there only if you actually need
+                full-dome density. Channels and horizontal angular
+                resolution are derived from this value and the chosen
+                ROI's aspect ratio so angular spacing stays roughly
+                equal in both directions; actual rendered ray count
+                rounds to ±2 % of the requested target.
         """
+        try:
+            vfov, hfov = _ROI_FOV_DEG[roi]
+        except KeyError:
+            raise ValueError(
+                f"roi must be one of {sorted(_ROI_FOV_DEG)}; got {roi!r}"
+            )
+        if points_per_scan < 1:
+            raise ValueError(
+                f"points_per_scan must be >= 1; got {points_per_scan}"
+            )
+
+        # Derive channels and horizontal_res from the requested point
+        # budget, keeping vertical and horizontal angular spacing
+        # roughly equal: total ≈ channels × h_count, h_count ≈
+        # aspect × channels, so channels ≈ sqrt(total / aspect).
+        vspan = vfov[1] - vfov[0]
+        hspan = hfov[1] - hfov[0]
+        aspect = hspan / vspan
+        channels = max(1, round(math.sqrt(points_per_scan / aspect)))
+        h_count = max(1, round(points_per_scan / channels))
+        horizontal_res = hspan / h_count
+
         if mesh_prim_paths is None:
             # Only prims that exist in EVERY G1 task we care about. The
             # MultiMeshRayCaster validates these paths at scene-build
@@ -151,8 +211,8 @@ class LidarPresets:
             mesh_prim_paths=mesh_prim_paths,
             pattern_cfg=LidarPatternCfg(
                 channels=channels,
-                vertical_fov_range=(-7.0, 52.0),
-                horizontal_fov_range=(-180.0, 180.0),
+                vertical_fov_range=vfov,
+                horizontal_fov_range=hfov,
                 horizontal_res=horizontal_res,
             ),
             debug_vis=False,
