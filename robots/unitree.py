@@ -717,23 +717,26 @@ G129_CFG_WITH_DEX3_WHOLEBODY = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.80),
+        # IMPORTANT: these values are used both at spawn AND by reset_scene_to_default.
+        # The action provider in action_provider_wh_dds.py drives arm joint targets to
+        # 0.0 every frame (via full_action.zero_()). For the spawn pose, reset pose, and
+        # steady-state pose to be consistent (no jump on reset), arm joints must be 0.0
+        # here. Leg joints (-0.20/0.42/-0.23) are still applied because the RL policy
+        # uses default_joint_pos[legs] as an offset (see action_provider line ~454).
         joint_pos={
             ".*_hip_pitch_joint": -0.20,
             ".*_knee_joint": 0.42,
             ".*_ankle_pitch_joint": -0.23,
-            ".*_elbow_joint": 0.87,
-            "left_shoulder_roll_joint": 0.18,
-            "left_shoulder_pitch_joint": 0.35,
-            "left_shoulder_yaw_joint": 0.0,
-            "left_wrist_roll_joint": 0.0,
-            "left_wrist_pitch_joint": 0.0,
-            "left_wrist_yaw_joint": 0.0,
-            "right_shoulder_roll_joint": -0.18,
-            "right_shoulder_pitch_joint": 0.35,
-            "right_shoulder_yaw_joint": 0.0,
-            "right_wrist_roll_joint": 0.0,
-            "right_wrist_pitch_joint": 0.0,
-            "right_wrist_yaw_joint": 0.0,
+            # Arms: 0.0 = "ready" pose (arms forward, hands visible in front camera).
+            # The Unitree URDF pre-rotates shoulder origins so joint=0 is arms-forward,
+            # not T-pose or arms-down. Empirically verified.
+            ".*_shoulder_pitch_joint": 0.0,
+            ".*_shoulder_roll_joint": 0.0,
+            ".*_shoulder_yaw_joint": 0.0,
+            ".*_elbow_joint": 0.0,
+            ".*_wrist_roll_joint": 0.0,
+            ".*_wrist_pitch_joint": 0.0,
+            ".*_wrist_yaw_joint": 0.0,
 
             # fingers joints
             "left_hand_index_0_joint": 0.0,

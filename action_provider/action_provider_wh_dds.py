@@ -491,7 +491,7 @@ class DDSRLActionProvider(ActionProvider):
                             full_action.index_copy_(0, self._inspire_special_target_idx_t, special_vals)
             # 同步仿真多步
             for _ in range(4):
-                self.env.scene["robot"].set_joint_position_target(full_action) 
+                self.env.scene["robot"].set_joint_position_target(full_action)
                 self.env.scene.write_data_to_sim()                           
                 self.env.sim.step(render=False)                              
                 self.env.scene.update(dt=self.env.physics_dt)                    
