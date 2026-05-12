@@ -110,7 +110,10 @@ def get_camera_image(
     
 
     camera_keys = _camera_cache['camera_keys']
-    # Head camera (front camera)
+    # Head camera (front camera) — RGB only. Depth lives on a sibling
+    # prim (front_depth_camera) that mimics the D435 left-IR sensor
+    # position and FOV. See tasks/common_config/camera_configs.py
+    # g1_front_depth_camera() for the why.
     if "front_camera" in camera_keys:
         head_image = env.scene["front_camera"].data.output["rgb"][0]  # [batch, height, width, 3]
 
@@ -119,22 +122,22 @@ def get_camera_image(
         else:
             images["head"] = head_image.cpu().numpy()
 
-        # Depth, if the camera was configured with data_types containing
-        # "depth" (alias for distance_to_image_plane). Output is float32
-        # metric distance per pixel, with NaN/inf where the ray missed
-        # everything within the clipping range. We pack it as uint16
-        # millimetres so the SHM payload is half the size of float32
-        # and the consumer can scale by 1e-3 to recover metres.
-        depth_out = env.scene["front_camera"].data.output.get("depth")
+    # Head depth (D435 left-IR). Output is float32 metric distance per
+    # pixel, with NaN/inf where the ray missed everything within the
+    # clipping range. Packed as uint16 millimetres so the SHM payload
+    # is half the size of float32 and the consumer scales by 1e-3 to
+    # recover metres. The frame is the left-IR sensor's, not the RGB
+    # sensor's — the plugin-side bridge applies the left-IR → RGB warp
+    # before transmission so downstream consumers see the same
+    # RGB-frame depth they would on the real robot.
+    if "front_depth_camera" in camera_keys:
+        depth_out = env.scene["front_depth_camera"].data.output.get("depth")
         if depth_out is not None:
             head_depth = depth_out[0]  # [H, W, 1] float32
             if head_depth.device.type == 'cpu':
                 head_depth_np = head_depth.numpy()
             else:
                 head_depth_np = head_depth.cpu().numpy()
-            # Squeeze trailing channel dim, replace non-finite with 0
-            # (treated as "no data" by the consumer), clip to 65 m and
-            # quantise to mm.
             if head_depth_np.ndim == 3 and head_depth_np.shape[-1] == 1:
                 head_depth_np = head_depth_np[..., 0]
             head_depth_np = np.where(np.isfinite(head_depth_np), head_depth_np, 0.0)

@@ -29,15 +29,6 @@ from tasks.common_scene.base_scene_stack_rgyblock import TableRedGreenYellowBloc
 # Scene definition
 ##
 
-# Override the head camera to also publish metric depth alongside RGB.
-# camera_state.py downcasts the float32 depth to uint16 mm before
-# pushing it to shared memory. Wrist cams stay RGB-only.
-def _g1_front_camera_with_depth():
-    cam = CameraPresets.g1_front_camera()
-    cam.data_types = ["rgb", "depth"]
-    return cam
-
-
 @configclass
 class ObjectTableSceneCfg(TableRedGreenYellowBlockSceneCfg):
     """object table scene configuration class
@@ -52,8 +43,13 @@ class ObjectTableSceneCfg(TableRedGreenYellowBlockSceneCfg):
         init_rot=(0.7071, 0, 0, -0.7071))
 
 
-    # 6. add camera configuration (head cam carries RGB + depth)
-    front_camera = _g1_front_camera_with_depth()
+    # 6. head sensors. RGB and depth are now separate prims so the sim
+    # matches the real D435 layout (depth originates from the left-IR
+    # sensor, 15 mm to the robot-left of the RGB and with a wider FOV).
+    # The plugin-side bridge warps depth into the RGB frame before
+    # transmitting, mirroring align.rs on the real path.
+    front_camera = CameraPresets.g1_front_camera()
+    front_depth_camera = CameraPresets.g1_front_depth_camera()
     left_wrist_camera = CameraPresets.left_dex3_wrist_camera()
     right_wrist_camera = CameraPresets.right_dex3_wrist_camera()
     # 7. MID-360 lidar attached to torso_link, dome-down (180° roll

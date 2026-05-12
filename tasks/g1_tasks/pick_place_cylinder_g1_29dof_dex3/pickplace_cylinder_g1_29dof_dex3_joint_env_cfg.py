@@ -31,17 +31,6 @@ from tasks.common_scene.base_scene_pickplace_cylindercfg import TableCylinderSce
 # Scene definition
 ##
 
-# Override the head camera to also publish metric depth alongside RGB.
-# The "depth" data type aliases distance_to_image_plane in Isaac Lab and
-# returns float32 metres per pixel; camera_state.py downcasts it to
-# uint16 mm before pushing to shared memory. Wrist cams stay RGB-only —
-# saving depth on each adds GPU cost we don't need for VR teleop.
-def _g1_front_camera_with_depth():
-    cam = CameraPresets.g1_front_camera()
-    cam.data_types = ["rgb", "depth"]
-    return cam
-
-
 @configclass
 class ObjectTableSceneCfg(TableCylinderSceneCfg):
     """object table scene configuration class
@@ -53,8 +42,13 @@ class ObjectTableSceneCfg(TableCylinderSceneCfg):
     # Humanoid robot w/ arms higher
     # 5. humanoid robot configuration
     robot: ArticulationCfg = G1RobotPresets.g1_29dof_dex3_base_fix()
-    # 6. add camera configuration (head cam carries RGB + depth)
-    front_camera = _g1_front_camera_with_depth()
+    # 6. head sensors. RGB and depth are now separate prims so the sim
+    # matches the real D435 layout (depth originates from the left-IR
+    # sensor, 15 mm to the robot-left of the RGB and with a wider FOV).
+    # The plugin-side bridge warps depth into the RGB frame before
+    # transmitting, mirroring align.rs on the real path.
+    front_camera = CameraPresets.g1_front_camera()
+    front_depth_camera = CameraPresets.g1_front_depth_camera()
     left_wrist_camera = CameraPresets.left_dex3_wrist_camera()
     right_wrist_camera = CameraPresets.right_dex3_wrist_camera()
     # 7. MID-360 lidar attached to torso_link, dome-down (180° roll
