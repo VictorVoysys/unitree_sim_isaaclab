@@ -90,15 +90,16 @@ class CameraPresets:
 
     @classmethod
     def g1_front_depth_camera(cls) -> CameraCfg:
-        """D435 left-IR (depth) camera preset — sibling of g1_front_camera.
+        """D435 left-IR (depth) camera preset -- sibling of g1_front_camera.
 
         Mirrors the physical D435 layout: the depth origin sits at the
         left IR sensor, ~15 mm to the robot-left of the RGB sensor, and
-        the IR pair has a wider HFOV (~91°) than RGB (~69°). Intrinsics
-        are tuned so fx ≈ 631 at 1280×720, matching the constants
-        baked into `plugins/unitree_g1/g1_depth/src/align.rs` so the
-        same left-IR → RGB warp produces visually identical output for
-        sim and real.
+        the IR pair has a wider HFOV (~91 deg) than RGB (~69 deg).
+        Output is 848x480 to match the D435's depth-optimal mode, which
+        the real-robot pipeline also uses; player-side depth_warp.rs has
+        GRID_W/GRID_H = 848x480 so source pixels and grid vertices line
+        up 1:1 with no resample step. fx ~= 418 at 848x480 with the
+        focal_length/horizontal_aperture below, holding HFOV constant.
 
         +Y in d435_link is the robot's left (and camera-frame -X under
         the standard ROS rot_offset), so the +15 mm offset places this
@@ -106,8 +107,8 @@ class CameraPresets:
         """
         return CameraBaseCfg.get_camera_config(
             prim_path="/World/envs/env_.*/Robot/d435_link/depth_cam",
-            height=720,
-            width=1280,
+            height=480,
+            width=848,
             focal_length=9.86,
             horizontal_aperture=20.0,
             pos_offset=(0.0, 0.015, 0.0),
